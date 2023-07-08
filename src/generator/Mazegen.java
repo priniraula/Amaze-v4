@@ -5,6 +5,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.Stack;
@@ -23,58 +26,54 @@ public class Mazegen {
     public static int startY;
     public static int finishX;
     public static int finishY;
-    public static final int MAZE_SIDE_LEN = 50;
+    public static final int MAZE_SIDE_LEN = 20 * 2 + 1;
 
     protected static Random random;
     protected static int [][] maze;
     protected static List<List<Tree>> sets;
     protected static Stack<Edge> edges;
 
-    public static int [][] generateMaze (int startX, int startY, int finishX, int finishY){
-        maze = new int [MAZE_SIDE_LEN][MAZE_SIDE_LEN];
-        sets = new ArrayList<List<Tree>>();
-        edges = new Stack<Edge>();
-        random = new Random();
+    // Direction ENUM for backtracking
+    private enum direction {
+        N(1, 0, -1), S(2, 0, 1), E(4, 1, 0), W(8, -1, 0);
 
-        for (int i = 0; i < MAZE_SIDE_LEN; i += 1) {
-            List<Tree> current = new ArrayList<Tree>();
+        private final int bit;
+        private final int dx;
+        private final int dy;
+        private direction opposite;
 
-            for (int j = 0; j < MAZE_SIDE_LEN; j += 1) {
-                current.add(new Tree());
-                maze[i][j] = 0;
-
-                if (i > 0) {
-                    edges.add(new Edge(j, i, N));
-                }
-                if (j > 0) {
-                    edges.add(new Edge(j, i, W));
-                }
-            }
-
-            sets.add(current);
-            shuffle(edges);
+        static {
+            N.opposite = S;
+            S.opposite = N;
+            E.opposite = W;
+            W.opposite = E;
         }
 
-        while (edges.size() > 0) {
-            Edge temporary = edges.pop();
-            int x = temporary.x;
-            int y = temporary.y;
-            int direction = temporary.direction;
+        private direction(int bit, int dx, int dy) {
+            this.bit = bit;
+            this.dx = dx;
+            this.dy = dy;
+        }
+    }
 
-            int dx = x + directionX(direction);
-            int dy = y + directionY(direction);
+    private static boolean between (int x, int upper) {
+        return (x >= 0 && x < upper);
+    }
 
-            Tree set1 = (sets.get(y)).get(x);
-            Tree set2 = (sets.get(dy)).get(dx);
-
-            if (!set1.connected((set2))) {
-                set1.connect(set2);
-                maze[y][x] |= direction;
-                maze[dy][dx] |= oppositeDirection(direction);
+    // recursive backtracking
+    public static void generateMaze (int x, int y){
+        direction [] directions = direction.values();
+        Collections.shuffle(Arrays.asList(directions));
+        for (direction dir: directions) {
+            int cx = x + dir.dx;
+            int cy = y + dir.dy;
+            
+            if (between(cx, mSize) && between(cy, mSize) && maze[cx][cy] == 0) {
+                maze[x][y] |= dir.bit;
+                maze[cx][cy] |= dir.opposite.bit;
+                generateMaze(cx, cy);
             }
         }
-
-        return maze;
     }
 
     public static void run () {
@@ -82,7 +81,8 @@ public class Mazegen {
         startY = 1;
         finishX = mSize - 2;
         finishY = mSize - 2;
-        int [][] maze = generateMaze(startX, startY, finishX, finishY);
+        maze = new int [mSize][mSize];
+        generateMaze(1, 1);
 
         try {
             File file = new File("src/assets/maze.txt");
@@ -97,105 +97,24 @@ public class Mazegen {
             printStream.print(" ");
             printStream.println(startY);
 
-            for (int i = 0; i < MAZE_SIDE_LEN; i += 1) {
-                printStream.print(1 + " ");
-            }
-            printStream.print("\n");
-
-            for (int i = 0; i < MAZE_SIDE_LEN; i += 1) {
-                for (int j = 0; j < MAZE_SIDE_LEN; j += 1) {
-                    if (i == MAZE_SIDE_LEN - 1 && j == MAZE_SIDE_LEN - 1) {
-                        printStream.print(2 + " ");
-                    }
-                    else {
-                        // if (i == 0) {
-                        //     printStream.print(1 + " ");
-                        // }
-                        if ((maze[i][j] & S) != 0) {
-                            printStream.print(0 + " ");
-                        }
-                        else {
-                            printStream.print(1 + " ");
-                        }
-    
-                        if ((maze[i][j] & E) != 0) {
-                            if (((maze[i][j] | maze[i][j + 1]) & S) != 0) {
-                                printStream.print(0 + " ");
-                            }
-                            else {
-                                printStream.print(1 + " ");
-                            }
-                        }
-                        else {
-                            // printStream.print(1 + " ");
-                        }
-                    }
+            for (int i = 0; i < mSize; i += 1) {
+                for (int j = 0; j < mSize; j += 1) {
+                    printStream.print((maze[j][i] & 1) == 0 ? "1 1 " : "1 0 ");
                 }
-                printStream.print("\n");
+                printStream.println("1");
+                for (int j = 0; j < mSize; j += 1) {
+                    printStream.print((maze[j][i] & 8) == 0 ? "1 0 " : "0 0 ");
+                }
+                printStream.println("1");
             }
-
-            for (int i = 0; i < MAZE_SIDE_LEN; i += 1) {
-                printStream.print(1 + " ");
+            for (int j = 0; j < mSize; j += 1) {
+                printStream.print("1 1 ");
             }
+            printStream.println("1");
 
             printStream.close();
         } catch (IOException e) {
             e.printStackTrace();
-        }
-    }
-
-    private static void shuffle (List<Edge> edges) {
-        for (int i = 0; i < edges.size(); i += 1) {
-            int position = random.nextInt(edges.size());
-
-            Edge current1 = edges.get(i);
-            Edge current2 = edges.get(position);
-
-            edges.set(i, current2);
-            edges.set(position, current1);
-        }
-    }
-
-    private static int directionX (int direction) {
-        switch (direction) {
-            case E:
-                return +1;
-            case W:
-                return -1;
-            case N:
-            case S:
-                return 0;
-            default:
-                return -1;
-        }
-    }
-
-    private static int directionY (int direction) {
-        switch (direction) {
-            case E:
-            case W:
-                return 0;
-            case N:
-                return -1;
-            case S:
-                return 1;
-            default:
-                return -1;
-        }
-    }
-
-    private static int oppositeDirection (int direction) {
-        switch (direction) {
-            case E:
-                return W;
-            case W:
-                return E;
-            case N:
-                return S;
-            case S:
-                return N;
-            default:
-                return -1;
         }
     }
 }
